@@ -10,8 +10,8 @@
 Prerequisites: Docker Desktop (or Docker Engine + the Compose v2 plugin).
 
 ```bash
-git clone <repo-url>
-cd <repo>/task_2
+git clone git@github.com:melnykv2/week7.git
+cd week7/task_2
 
 docker compose up -d --build  # build the image and start db + web
 ```
