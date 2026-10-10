@@ -1,29 +1,105 @@
+# Local development environment for Healthchecks (Django) + Postgres.
+#
+#   cd task_2
+#   cp .env.example .env      # optional, defaults work out of the box
+#   docker compose up --build
+#
+# App:     http://localhost:8000
+# Mailpit: http://localhost:8025  (catches all outgoing email)
+
+name: healthchecks
+
+x-app: &app
+  build:
+    context: ..                      # repo root (source code + .dockerignore)
+    dockerfile: task_1/Dockerfile    # optimized Dockerfile from task_1
+  image: healthchecks:dev
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DB: postgres
+    DB_HOST: db
+    DB_PORT: "5432"
+    DB_NAME: ${POSTGRES_DB:-hc}
+    DB_USER: ${POSTGRES_USER:-postgres}
+    DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    DB_SSLMODE: disable
+    DEBUG: ${DEBUG:-True}
+    PYTHONDONTWRITEBYTECODE: "1"
+    SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-not-for-production}
+    SITE_ROOT: ${SITE_ROOT:-http://localhost:8000}
+    ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+    EMAIL_HOST: mailpit
+    EMAIL_PORT: "1025"
+    EMAIL_USE_TLS: "False"
+    DEFAULT_FROM_EMAIL: healthchecks@localhost
+  # Mount the source code so code/template changes are picked up without a rebuild.
+  volumes:
+    - ../hc:/app/hc
+    - ../templates:/app/templates
+    - ../static:/app/static
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:17
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: hc
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-hc}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - db-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-off job: applies migrations, then exits. web/sendalerts wait for it.
+  migrate:
+    <<: *app
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    restart: "no"
 
   web:
-    image: healthchecks:v1.4
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
-    environment:
-      DB_HOST: db
-      DB_PASSWORD: postgres
-      DEBUG: "True"
-      ALLOWED_HOSTS: "localhost,127.0.0.1"
+    <<: *app
+    # Django dev server with auto-reload (the image default is gunicorn).
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${WEB_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+
+  # Background worker that sends notifications when checks go down.
+  sendalerts:
+    <<: *app
+    command: ["python", "manage.py", "sendalerts"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
 
 volumes:
   db-data:
