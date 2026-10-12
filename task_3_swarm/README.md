@@ -104,7 +104,7 @@ The app reaches Postgres the same way: `DB_HOST: db`.
 ## Cleanup
 
 ```bash
-docker stack rm hc                # remove services and the hc_backend network
-docker swarm leave --force        # turn Swarm mode off
-docker volume rm hc_db-data       # optional: delete the database data
+docker stack rm hc
+docker swarm leave --force
+docker volume rm hc_db-data
 ```
