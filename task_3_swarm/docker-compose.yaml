@@ -1,0 +1,50 @@
+version: "3.8"                       # stack deploy works with the v3 format
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: hc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d hc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      replicas: 1
+
+  web:
+    image: healthchecks:dev          # must be built beforehand: stack deploy ignores "build:"
+    command: sh -c "python manage.py migrate --noinput && gunicorn hc.wsgi:application --bind 0.0.0.0:8000 --access-logfile -"
+    environment:
+      DB: postgres
+      DB_HOST: db                    # resolved by Swarm DNS over the overlay network
+      DB_NAME: hc
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DEBUG: "False"
+      SITE_ROOT: http://localhost:8000
+      ALLOWED_HOSTS: "*"             # requests can arrive via different internal IPs
+    ports:
+      - "8000:8000"                  # published through the "ingress" routing mesh
+    networks:
+      - backend
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+networks:
+  backend:
+    driver: overlay
+    attachable: true                 # lets plain "docker run" containers join, for testing
+
+volumes:
+  db-data:
