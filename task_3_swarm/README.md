@@ -89,30 +89,6 @@ $ docker run --rm --network hc_backend alpine wget -qS -O /dev/null http://web:8
 The request goes by service name, through the VIP, over the overlay network.
 The app reaches Postgres the same way: `DB_HOST: db`.
 
-### 6. Load balancing through the routing mesh
-
-```
-$ for i in $(seq 1 10); do curl -s -o /dev/null http://localhost:8000/accounts/login/; done
-$ docker service logs hc_web 2>&1 | grep curl
-hc_web.1.yp3ffvdrmh75@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.1.yp3ffvdrmh75@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.1.yp3ffvdrmh75@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.1.yp3ffvdrmh75@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.1.yp3ffvdrmh75@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.2.kcjgq8uzjkek@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.2.kcjgq8uzjkek@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.2.kcjgq8uzjkek@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.2.kcjgq8uzjkek@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-hc_web.2.kcjgq8uzjkek@docker-desktop | 10.0.0.2 - - [12/Oct/2026:08:28:56 +0000] "GET /accounts/login/ HTTP/1.1" 200 6712 "-" "curl/8.7.1"
-```
-
-- The 10 requests were split **5 / 5** between the two replicas (`hc_web.1`
-  and `hc_web.2`).
-- Every request comes from `10.0.0.2`, an address on the **`ingress`** network
-  (`10.0.0.0/24`), not from the Mac. That's the routing mesh: published port
-  8000 is handled by the `ingress` overlay, which forwards each request to one
-  of the replicas.
-
 ## Bridge vs host vs overlay
 
 | | Bridge (task 2) | Host (task 3) | Overlay (task 3 swarm) |
